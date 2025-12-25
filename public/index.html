@@ -1,1049 +1,356 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <base target="_self">
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Molta9a League - Ballon d'Or Voting</title>
-    <meta name="description" content="Vote for the Ballon d'Or winner of Molta9a League - One vote per user">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
-    <!-- FingerprintJS Library -->
-    <script src="https://cdn.jsdelivr.net/npm/@fingerprintjs/fingerprintjs@3/dist/fp.min.js"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        primary: "#000000",
-                        secondary: "#FFD700",
-                        accent: "#FFC107",
-                        dark: "#111111",
-                        light: "#F5F5F5"
-                    },
-                    animation: {
-                        'pulse-gold': 'pulse-gold 2s infinite',
-                        'float': 'float 3s ease-in-out infinite',
-                    },
-                    keyframes: {
-                        'pulse-gold': {
-                            '0%, 100%': { boxShadow: '0 0 0 0 rgba(255, 215, 0, 0.7)' },
-                            '50%': { boxShadow: '0 0 0 10px rgba(255, 215, 0, 0)' }
-                        },
-                        'float': {
-                            '0%, 100%': { transform: 'translateY(0)' },
-                            '50%': { transform: 'translateY(-10px)' }
-                        }
-                    }
-                }
-            }
-        }
-    </script>
-    <style>
-        /* Custom scrollbar */
-        ::-webkit-scrollbar {
-            width: 8px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #111111;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #FFD700;
-            border-radius: 4px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #FFC107;
-        }
-        
-        /* Glow effect for voted player */
-        .voted-glow {
-            animation: glow 2s ease-in-out infinite alternate;
-        }
-        
-        @keyframes glow {
-            from {
-                box-shadow: 0 0 5px #FFD700, 0 0 10px #FFD700, 0 0 15px #FFD700;
-            }
-            to {
-                box-shadow: 0 0 10px #FFD700, 0 0 20px #FFD700, 0 0 30px #FFD700;
-            }
-        }
-        
-        .password-hint {
-            cursor: help;
-            border-bottom: 1px dotted #666;
-        }
-    </style>
-</head>
-<body class="min-h-screen bg-dark text-white">
-    <!-- Header -->
-    <header class="bg-black border-b-2 border-secondary sticky top-0 z-50">
-        <div class="container mx-auto px-4 py-4">
-            <div class="flex justify-between items-center">
-                <div class="flex items-center space-x-4">
-                    <div class="bg-secondary text-black p-3 rounded-full animate-pulse-gold">
-                        <i class="fas fa-trophy text-2xl"></i>
-                    </div>
-                    <div>
-                        <h1 class="text-3xl font-bold">
-                            <span class="text-secondary">Molta9a</span> League
-                        </h1>
-                        <p class="text-gray-400">Ballon d'Or </p>
-                    </div>
-                </div>
-                <div class="flex items-center space-x-4">
-                    <div id="userStatus" class="flex items-center space-x-3">
-                        <div class="bg-secondary text-black p-2 rounded-full">
-                            <i class="fas fa-user text-lg"></i>
-                        </div>
-                        <div>
-                            <div id="voteStatusText" class="font-semibold"></div>
-                            <div class="text-sm text-gray-400" id="voteIdentifier"></div>
-                        </div>
-                    </div>
-                    <button onclick="resetVote()" id="resetVoteBtn" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors hidden">
-                        <i class="fas fa-redo mr-2"></i>Reset 
-                    </button>
-                </div>
-            </div>
-        </div>
-    </header>
+const express = require('express');
+const cors = require('cors');
+const { Pool } = require('pg');
+require('dotenv').config();
 
-    <!-- Main Content -->
-    <main class="container mx-auto px-4 py-8">
-        <!-- Hero Section -->
-        <section class="text-center mb-12">
-            <div class="relative">
-                <div class="absolute inset-0 bg-gradient-to-r from-black via-transparent to-black opacity-50"></div>
-                <div class="relative z-10 py-12">
-                    <h2 class="text-4xl md:text-5xl font-bold mb-4">
-                        <span class="text-secondary">Voti</span> 
-                    </h2>
-                    <p class="text-xl text-gray-300 mb-8 max-w-2xl mx-auto">
-                        Voti l ahsen joueur fil trimestre 
-                    </p>
-                    <div class="flex flex-wrap justify-center gap-4">
-                        <div class="bg-black border-2 border-secondary p-4 rounded-lg">
-                            <div class="text-secondary text-2xl font-bold" id="voteCount">0</div>
-                            <div class="text-gray-400">Total Votes</div>
-                        </div>
+const app = express();
+const port = process.env.PORT || 3000;
 
-                        <div class="bg-black border-2 border-secondary p-4 rounded-lg">
-                            <div class="text-secondary text-2xl font-bold" id="playerCount">6</div>
-                            <div class="text-gray-400">Players</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
+// Middleware
+app.use(cors());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.static(__dirname + '/public'));
 
-        <!-- Voting Instructions -->
-        <section class="mb-8">
-            <div class="bg-yellow-900/30 border border-yellow-700 rounded-xl p-4">
-                <div class="flex items-start">
-                    <i class="fas fa-info-circle text-yellow-400 text-xl mt-1 mr-3"></i>
-                    <div>
-                        <h3 class="font-bold text-yellow-300 mb-1">El rules</h3>
-                        <p class="text-gray-300">
-                            • Mtnajem tvoti ken <span class="text-secondary font-bold">MARA</span> <br>
-                            
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </section>
+// PostgreSQL connection
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+});
 
-        <!-- Voting Section -->
-        <section id="votingSection">
-            <div class="text-center mb-8">
-                <h3 class="text-3xl font-bold mb-2">Akhtar </h3>
-                <p class="text-gray-400"></p>
-                <div id="voteStatus" class="mt-4 p-4 rounded-lg hidden">
-                    <i class="fas mr-2"></i>
-                    <span id="statusMessage"></span>
-                </div>
-            </div>
+// Admin password
+const ADMIN_PASSWORD = "tchedlouzeboulaaz1919";
 
-            <div id="playersGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                <!-- Players will be loaded here dynamically -->
-            </div>
-        </section>
+// Initialize database
+async function initializeDatabase() {
+    try {
+        // Create players table
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS players (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                team VARCHAR(100) NOT NULL,
+                position VARCHAR(50) DEFAULT 'Player',
+                votes INTEGER DEFAULT 0,
+                image TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
 
-        <!-- Admin Login Modal -->
-        <div id="adminLoginModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 hidden">
-            <div class="bg-gray-900 border-2 border-secondary rounded-xl p-8 max-w-md w-full mx-4">
-                <h3 class="text-2xl font-bold mb-6 text-center text-secondary">
-                    <i class="fas fa-lock mr-2"></i>Admin Login
-                </h3>
-                <div class="space-y-4">
-                    <div>
-                        <label class="block text-gray-400 mb-2">Password</label>
-                        <input type="password" id="adminPassword" 
-                               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-secondary"
-                               placeholder="Enter admin password">
-                    </div>
-                    <div class="text-sm text-gray-500">
-                        
-                        <span class="password-hint text-xs ml-1" title="Hint: It's the year when something special happened to Tchedlouze">?</span>
-                    </div>
-                    <div class="flex space-x-4">
-                        <button onclick="adminLogin()" class="flex-1 bg-secondary text-black font-bold py-3 rounded-lg hover:bg-yellow-500 transition-colors">
-                            Login
-                        </button>
-                        <button onclick="closeAdminLogin()" class="flex-1 bg-gray-700 text-white font-bold py-3 rounded-lg hover:bg-gray-600 transition-colors">
-                            Cancel
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
+        // Create votes table with UNIQUE constraint on device_id
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS votes (
+                id SERIAL PRIMARY KEY,
+                player_id INTEGER REFERENCES players(id),
+                device_id VARCHAR(255) NOT NULL UNIQUE,
+                voted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
 
-        <!-- Admin Control Panel -->
-        <section id="adminPanel" class="mt-12 hidden">
-            <div class="bg-black border-2 border-secondary rounded-xl p-6">
-                <div class="flex justify-between items-center mb-6">
-                    <h3 class="text-2xl font-bold text-secondary">
-                        <i class="fas fa-cogs mr-2"></i>Admin Controls
-                    </h3>
-                    <button onclick="logoutAdmin()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg">
-                        <i class="fas fa-sign-out-alt mr-2"></i>Logout
-                    </button>
-                </div>
-                
-                <!-- Reset All Votes -->
-                <div class="mb-6 p-4 bg-gray-900 rounded-lg">
-                    <h4 class="font-bold text-lg mb-3 text-yellow-300">
-                        <i class="fas fa-redo mr-2"></i>Vote Management
-                    </h4>
-                    <div class="flex flex-wrap gap-3">
-                        <button onclick="resetAllVotes()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg">
-                            <i class="fas fa-trash mr-2"></i>Reset All Votes
-                        </button>
-                        <button onclick="exportVotesData()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg">
-                            <i class="fas fa-download mr-2"></i>Export Results
-                        </button>
-                    </div>
-                </div>
-                
-                <!-- Add New Player -->
-                <div class="mb-6">
-                    <h4 class="font-bold text-lg mb-4 text-secondary">
-                        <i class="fas fa-user-plus mr-2"></i>Add New Player
-                    </h4>
-                    <form id="addPlayerForm" class="space-y-4">
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-gray-400 mb-2">Player Name</label>
-                                <input type="text" id="playerName" required 
-                                       class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-secondary">
-                            </div>
-                            <div>
-                                <label class="block text-gray-400 mb-2">Team</label>
-                                <input type="text" id="playerTeam" required 
-                                       class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-secondary"
-                                       value="3eme math">
-                            </div>
-                        </div>
-                        
-                        <!-- Image Upload Section -->
-                        <div>
-                            <label class="block text-gray-400 mb-2">Player Image</label>
-                            <div class="flex flex-col space-y-3">
-                                <div class="flex space-x-3">
-                                    <button type="button" onclick="takePhoto()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg">
-                                        <i class="fas fa-camera mr-2"></i>Take Photo
-                                    </button>
-                                    <button type="button" onclick="uploadPhoto()" class="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-3 rounded-lg">
-                                        <i class="fas fa-upload mr-2"></i>Upload Photo
-                                    </button>
-                                </div>
-                                <input type="file" id="imageUpload" accept="image/*" capture="environment" class="hidden">
-                                <input type="hidden" id="playerImageBase64">
-                                
-                                <!-- Image Preview -->
-                                <div id="imagePreviewContainer" class="hidden mt-3">
-                                    <div class="border-2 border-dashed border-gray-700 rounded-lg p-4">
-                                        <div class="flex items-center justify-between mb-2">
-                                            <span class="text-gray-400">Image Preview:</span>
-                                            <button type="button" onclick="clearImage()" class="text-red-500 hover:text-red-400">
-                                                <i class="fas fa-times"></i>
-                                            </button>
-                                        </div>
-                                        <img id="imagePreview" class="max-w-full h-32 object-cover rounded-lg mx-auto">
-                                    </div>
-                                </div>
-                                
-                                <!-- Or use URL -->
-                                <div class="relative">
-                                    <div class="absolute inset-0 flex items-center">
-                                        <div class="w-full border-t border-gray-700"></div>
-                                    </div>
-                                    <div class="relative flex justify-center text-sm">
-                                        <span class="px-2 bg-gray-900 text-gray-400">OR use image URL</span>
-                                    </div>
-                                </div>
-                                
-                                <input type="url" id="playerImageUrl" 
-                                       class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-secondary"
-                                       placeholder="https://example.com/player-image.jpg">
-                            </div>
-                        </div>
-                        
-                        <div class="flex space-x-4">
-                            <button type="submit" class="flex-1 bg-secondary text-black font-bold py-3 rounded-lg hover:bg-yellow-500 transition-colors">
-                                <i class="fas fa-plus mr-2"></i>Add Player
-                            </button>
-                            <button type="button" onclick="hideAdminPanel()" class="flex-1 bg-gray-700 text-white font-bold py-3 rounded-lg hover:bg-gray-600 transition-colors">
-                                Cancel
-                            </button>
-                        </div>
-                    </form>
-                </div>
-                
-                <!-- Manage Existing Players -->
-                <div>
-                    <h4 class="font-bold text-lg mb-4 text-secondary">
-                        <i class="fas fa-users mr-2"></i>Manage Players
-                    </h4>
-                    <div class="overflow-x-auto">
-                        <table class="w-full bg-gray-900 rounded-lg overflow-hidden">
-                            <thead>
-                                <tr class="bg-gray-800">
-                                    <th class="p-3 text-left">Player</th>
-                                    <th class="p-3 text-left">Votes</th>
-                                    <th class="p-3 text-left">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="playersTable">
-                                <!-- Players will be loaded here dynamically -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Results Section -->
-        <section id="resultsSection" class="mt-16">
-            <div class="bg-black border-2 border-secondary rounded-xl p-6">
-                <h3 class="text-2xl font-bold mb-6 text-center">
-                    <i class="fas fa-chart-bar text-secondary mr-2"></i>
-                    Live Results
-                </h3>
-                <div id="resultsList" class="space-y-4">
-                    <!-- Results will be loaded here dynamically -->
-                </div>
-            </div>
-        </section>
-    </main>
-
-    <!-- Admin Access Button -->
-    <button id="adminAccessBtn" onclick="showAdminLogin()" class="fixed bottom-6 right-6 bg-gray-800 hover:bg-secondary text-white hover:text-black p-4 rounded-full shadow-lg transition-colors z-40">
-        <i class="fas fa-user-shield text-xl"></i>
-    </button>
-
-    <!-- Add Player Button (for admin) -->
-    <button id="toggleAdminBtn" onclick="showAdminPanel()" class="fixed bottom-6 right-24 bg-secondary text-black p-4 rounded-full shadow-lg hover:bg-yellow-500 transition-colors z-40 hidden">
-        <i class="fas fa-plus text-xl"></i>
-    </button>
-
-    <script>
-        // =============================================
-        // BACKEND API CONFIGURATION
-        // =============================================
-        const API_BASE_URL = window.location.hostname === 'localhost' 
-            ? 'http://localhost:3000/api' 
-            : '/api'; // On Render, use relative path
-        
-        // =============================================
-        // ADMIN CONFIGURATION
-        // =============================================
-        const ADMIN_PASSWORD = "tchedlouzeboulaaz1919"; // Your new secure password
-        
-        // =============================================
-        // GLOBAL STATE
-        // =============================================
-        let players = [];
-        let isAdmin = false;
-        let userVoted = false;
-        let totalVotes = 0;
-        let userDeviceId = null;
-        let userVotedFor = null;
-
-        // =============================================
-        // API FUNCTIONS
-        // =============================================
-        async function fetchFromAPI(endpoint, options = {}) {
-            try {
-                const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...options.headers
-                    },
-                    ...options
-                });
-                
-                if (!response.ok) {
-                    throw new Error(`API Error: ${response.status}`);
-                }
-                
-                return await response.json();
-            } catch (error) {
-                console.error('API Error:', error);
-                showMessage('Connection error. Please try again.', 'error');
-                throw error;
-            }
-        }
-
-        async function loadPlayers() {
-            try {
-                const data = await fetchFromAPI('/players');
-                players = data.players || [];
-                totalVotes = data.totalVotes || 0;
-                
-                document.getElementById('voteCount').textContent = totalVotes;
-                renderPlayers();
-                updateResults();
-            } catch (error) {
-                // Fallback to initial players if API fails
-                players = getInitialPlayers();
-                showMessage('Using offline mode. Some features limited.', 'info');
-            }
-        }
-
-        async function saveVote(playerId) {
-            try {
-                const response = await fetchFromAPI('/vote', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        playerId: playerId,
-                        deviceId: userDeviceId
-                    })
-                });
-                
-                return response.success;
-            } catch (error) {
-                showMessage('Failed to save vote. Please try again.', 'error');
-                return false;
-            }
-        }
-
-        async function resetVoteAPI() {
-            try {
-                await fetchFromAPI('/reset-vote', {
-                    method: 'POST',
-                    body: JSON.stringify({ deviceId: userDeviceId })
-                });
-                return true;
-            } catch (error) {
-                return false;
-            }
-        }
-
-        async function checkDeviceVote() {
-            try {
-                const data = await fetchFromAPI(`/check-vote/${userDeviceId}`);
-                if (data.hasVoted) {
-                    userVoted = true;
-                    userVotedFor = data.playerId;
-                    updateVoteStatusUI();
-                    document.getElementById('resetVoteBtn').classList.remove('hidden');
-                    showMessage(`You voted for ${getPlayerName(userVotedFor)}`, 'info');
-                } else {
-                    userVoted = false;
-                    userVotedFor = null;
-                    document.getElementById('voteStatusText').textContent = 'Ready to Vote';
-                    document.getElementById('resetVoteBtn').classList.add('hidden');
-                }
-            } catch (error) {
-                console.error('Error checking vote:', error);
-            }
-        }
-
-        // =============================================
-        // ADMIN API FUNCTIONS
-        // =============================================
-        async function adminLoginAPI(password) {
-            try {
-                const data = await fetchFromAPI('/admin/login', {
-                    method: 'POST',
-                    body: JSON.stringify({ password: password })
-                });
-                return data.success;
-            } catch (error) {
-                return false;
-            }
-        }
-
-        async function resetAllVotesAPI() {
-            try {
-                const response = await fetchFromAPI('/admin/reset-all', {
-                    method: 'POST'
-                });
-                return response.success;
-            } catch (error) {
-                return false;
-            }
-        }
-
-        async function addPlayerAPI(playerData) {
-            try {
-                const response = await fetchFromAPI('/admin/add-player', {
-                    method: 'POST',
-                    body: JSON.stringify(playerData)
-                });
-                return response.player;
-            } catch (error) {
-                return null;
-            }
-        }
-
-        async function removePlayerAPI(playerId) {
-            try {
-                const response = await fetchFromAPI(`/admin/remove-player/${playerId}`, {
-                    method: 'DELETE'
-                });
-                return response.success;
-            } catch (error) {
-                return false;
-            }
-        }
-
-        // =============================================
-        // DEVICE FINGERPRINTING
-        // =============================================
-        async function initializeDeviceId() {
-            try {
-                const fpPromise = FingerprintJS.load();
-                const fp = await fpPromise;
-                const result = await fp.get();
-                userDeviceId = result.visitorId;
-                
-                document.getElementById('voteIdentifier').textContent = 'Device ID: ' + userDeviceId.substring(0, 12) + '...';
-                
-                await checkDeviceVote();
-                
-            } catch (error) {
-                console.error("Error getting device ID:", error);
-                userDeviceId = 'device_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-                document.getElementById('voteIdentifier').textContent = 'Device ID: ' + userDeviceId.substring(0, 12) + '...';
-            }
-        }
-
-        // =============================================
-        // PLAYER MANAGEMENT FUNCTIONS
-        // =============================================
-        function getInitialPlayers() {
-            return [
-                {
-                    "id": 1,
-                    "name": "Alaa Azouzi",
-                    "team": "3eme math",
-                    "position": "Forward",
-                    "votes": 0,
-                    "image": ""
-                },
-                {
-                    "id": 2,
-                    "name": "Youssef Hmaidi",
-                    "team": "3eme math",
-                    "position": "Forward",
-                    "votes": 0,
-                    "image": ""
-                },
-                {
-                    "id": 3,
-                    "name": "Ayhem Zerai",
-                    "team": "3eme math",
-                    "position": "Forward",
-                    "votes": 0,
-                    "image": ""
-                },
-                {
-                    "id": 4,
-                    "name": "Amine Mehdouani",
-                    "team": "3eme math",
-                    "position": "Midfielder",
-                    "votes": 0,
-                    "image": ""
-                },
-                {
-                    "id": 5,
-                    "name": "Adem Nahedh",
-                    "team": "3eme math",
-                    "position": "Forward",
-                    "votes": 0,
-                    "image": ""
-                },
-                {
-                    "id": 6,
-                    "name": "Adem Hdhili",
-                    "team": "3eme math",
-                    "position": "Forward",
-                    "votes": 0,
-                    "image": ""
-                }
+        // Check if we need to seed initial players
+        const { rows } = await pool.query('SELECT COUNT(*) FROM players');
+        if (parseInt(rows[0].count) === 0) {
+            const initialPlayers = [
+                ['Alaa Azouzi', '3eme math', 'Forward', 0, ''],
+                ['Youssef Hmaidi', '3eme math', 'Forward', 0, ''],
+                ['Ayhem Zerai', '3eme math', 'Forward', 0, ''],
+                ['Amine Mehdouani', '3eme math', 'Midfielder', 0, ''],
+                ['Adem Nahedh', '3eme math', 'Forward', 0, ''],
+                ['Adem Hdhili', '3eme math', 'Forward', 0, '']
             ];
-        }
-
-        function getPlayerName(playerId) {
-            const player = players.find(p => p.id === parseInt(playerId));
-            return player ? player.name : 'Unknown Player';
-        }
-
-        function updateVoteStatusUI() {
-            if (userVoted && userVotedFor) {
-                document.getElementById('voteStatusText').textContent = `Voted for ${getPlayerName(userVotedFor)}`;
-                document.getElementById('voteStatusText').classList.add('text-secondary');
-            } else {
-                document.getElementById('voteStatusText').textContent = 'Ready to Vote';
-                document.getElementById('voteStatusText').classList.remove('text-secondary');
-            }
-        }
-
-        // =============================================
-        // ADMIN FUNCTIONS
-        // =============================================
-        async function showAdminLogin() {
-            document.getElementById('adminLoginModal').classList.remove('hidden');
-        }
-
-        function closeAdminLogin() {
-            document.getElementById('adminLoginModal').classList.add('hidden');
-            document.getElementById('adminPassword').value = '';
-        }
-
-        async function adminLogin() {
-            const password = document.getElementById('adminPassword').value;
             
-            // Local check (for security, also verify with backend)
-            if (password === ADMIN_PASSWORD) {
-                const apiSuccess = await adminLoginAPI(password);
-                
-                if (apiSuccess) {
-                    isAdmin = true;
-                    closeAdminLogin();
-                    showAdminPanel();
-                    showMessage('Admin access granted!', 'success');
-                } else {
-                    showMessage('Server authentication failed!', 'error');
-                }
-            } else {
-                showMessage('Incorrect password!', 'error');
-            }
-        }
-
-        function logoutAdmin() {
-            isAdmin = false;
-            hideAdminPanel();
-            showMessage('Logged out as admin', 'info');
-        }
-
-        function showAdminPanel() {
-            if (!isAdmin) {
-                showAdminLogin();
-                return;
-            }
-            document.getElementById('adminPanel').classList.remove('hidden');
-            document.getElementById('toggleAdminBtn').classList.remove('hidden');
-            document.getElementById('adminAccessBtn').classList.add('hidden');
-            loadPlayersTable();
-        }
-
-        function hideAdminPanel() {
-            document.getElementById('adminPanel').classList.add('hidden');
-            document.getElementById('toggleAdminBtn').classList.add('hidden');
-            document.getElementById('adminAccessBtn').classList.remove('hidden');
-        }
-
-        async function resetAllVotes() {
-            if (!confirm("Are you sure you want to reset ALL votes? This cannot be undone!")) {
-                return;
+            for (const player of initialPlayers) {
+                await pool.query(
+                    'INSERT INTO players (name, team, position, votes, image) VALUES ($1, $2, $3, $4, $5)',
+                    player
+                );
             }
             
-            const success = await resetAllVotesAPI();
-            
-            if (success) {
-                // Reset local state
-                userVoted = false;
-                userVotedFor = null;
-                
-                // Update UI
-                updateVoteStatusUI();
-                document.getElementById('resetVoteBtn').classList.add('hidden');
-                
-                // Reload data
-                await loadPlayers();
-                loadPlayersTable();
-                
-                showMessage('All votes have been reset!', 'success');
-            } else {
-                showMessage('Failed to reset votes!', 'error');
-            }
+            console.log('Initial players seeded');
         }
 
-        async function removePlayer(playerId) {
-            if (!confirm(`Are you sure you want to remove this player?`)) {
-                return;
-            }
-            
-            const success = await removePlayerAPI(playerId);
-            
-            if (success) {
-                // Remove from local array
-                players = players.filter(p => p.id !== playerId);
-                
-                // Update UI
-                renderPlayers();
-                updateResults();
-                loadPlayersTable();
-                
-                showMessage(`Player removed successfully!`, 'success');
-            } else {
-                showMessage('Failed to remove player!', 'error');
-            }
-        }
+        console.log('Database initialized successfully');
+    } catch (error) {
+        console.error('Database initialization error:', error);
+    }
+}
 
-        function exportVotesData() {
-            const data = {
-                timestamp: new Date().toISOString(),
-                totalVotes: totalVotes,
-                players: players.map(player => ({
-                    id: player.id,
-                    name: player.name,
-                    votes: player.votes,
-                    team: player.team
-                }))
-            };
-            
-            const dataStr = JSON.stringify(data, null, 2);
-            const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-            
-            const exportFileDefaultName = `molta9a-votes-${new Date().toISOString().split('T')[0]}.json`;
-            
-            const linkElement = document.createElement('a');
-            linkElement.setAttribute('href', dataUri);
-            linkElement.setAttribute('download', exportFileDefaultName);
-            linkElement.click();
-            
-            showMessage('Results exported!', 'success');
-        }
+// API Routes
 
-        function loadPlayersTable() {
-            const playersTable = document.getElementById('playersTable');
-            playersTable.innerHTML = '';
-            
-            players.forEach(player => {
-                const row = document.createElement('tr');
-                row.className = 'border-b border-gray-800 hover:bg-gray-800';
-                row.innerHTML = `
-                    <td class="p-3">
-                        <div class="flex items-center">
-                            <div class="w-10 h-10 rounded-full overflow-hidden mr-3">
-                                <img src="${player.image || 'https://via.placeholder.com/100?text=' + encodeURIComponent(player.name.charAt(0))}" 
-                                     alt="${player.name}" 
-                                     class="w-full h-full object-cover">
-                            </div>
-                            <div>
-                                <div class="font-semibold">${player.name}</div>
-                                <div class="text-sm text-gray-400">${player.team}</div>
-                            </div>
-                        </div>
-                    </td>
-                    <td class="p-3">
-                        <div class="text-secondary font-bold">${player.votes}</div>
-                        <div class="text-sm text-gray-400">votes</div>
-                    </td>
-                    <td class="p-3">
-                        <button onclick="removePlayer(${player.id})" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-lg text-sm">
-                            <i class="fas fa-trash mr-1"></i>Remove
-                        </button>
-                    </td>
-                `;
-                playersTable.appendChild(row);
-            });
-        }
-
-        // =============================================
-        // IMAGE UPLOAD FUNCTIONS
-        // =============================================
-        function takePhoto() {
-            document.getElementById('imageUpload').setAttribute('capture', 'environment');
-            document.getElementById('imageUpload').click();
-        }
-
-        function uploadPhoto() {
-            document.getElementById('imageUpload').removeAttribute('capture');
-            document.getElementById('imageUpload').click();
-        }
-
-        // Handle image file selection
-        document.getElementById('imageUpload').addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (file) {
-                if (file.size > 5 * 1024 * 1024) { // 5MB limit
-                    showMessage('Image too large! Max 5MB', 'error');
-                    return;
-                }
-                
-                const reader = new FileReader();
-                reader.onload = function(event) {
-                    const base64 = event.target.result;
-                    document.getElementById('playerImageBase64').value = base64;
-                    
-                    // Show preview
-                    document.getElementById('imagePreview').src = base64;
-                    document.getElementById('imagePreviewContainer').classList.remove('hidden');
-                    
-                    // Clear URL input
-                    document.getElementById('playerImageUrl').value = '';
-                };
-                reader.readAsDataURL(file);
-            }
+// Get all players and total votes
+app.get('/api/players', async (req, res) => {
+    try {
+        const playersResult = await pool.query('SELECT * FROM players ORDER BY id');
+        const totalVotesResult = await pool.query('SELECT SUM(votes) as total FROM players');
+        
+        res.json({
+            players: playersResult.rows,
+            totalVotes: parseInt(totalVotesResult.rows[0].total) || 0
         });
+    } catch (error) {
+        console.error('Error fetching players:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 
-        function clearImage() {
-            document.getElementById('playerImageBase64').value = '';
-            document.getElementById('playerImageUrl').value = '';
-            document.getElementById('imagePreviewContainer').classList.add('hidden');
-            document.getElementById('imageUpload').value = '';
-        }
-
-        // =============================================
-        // PLAYER MANAGEMENT
-        // =============================================
-        function renderPlayers() {
-            const playersGrid = document.getElementById('playersGrid');
-            playersGrid.innerHTML = '';
-            
-            players.forEach(player => {
-                const isVotedFor = userVoted && userVotedFor == player.id;
-                const canVote = !userVoted;
-                
-                const playerCard = document.createElement('div');
-                playerCard.className = `player-card bg-black border-2 rounded-xl p-6 transition-all duration-300 cursor-pointer ${isVotedFor ? 'border-secondary voted-glow' : 'border-gray-800 hover:border-secondary hover:shadow-lg hover:shadow-yellow-500/20'}`;
-                playerCard.setAttribute('data-player-id', player.id);
-                
-                playerCard.innerHTML = `
-                    <div class="relative mb-6">
-                        <div class="w-32 h-32 mx-auto rounded-full overflow-hidden border-4 ${isVotedFor ? 'border-secondary' : 'border-gray-700'}">
-                            <img src="${player.image || 'https://via.placeholder.com/200?text=' + encodeURIComponent(player.name)}" 
-                                 alt="${player.name}" 
-                                 class="w-full h-full object-cover" 
-                                 loading="lazy">
-                        </div>
-                        <div class="absolute -bottom-2 left-1/2 transform -translate-x-1/2 ${isVotedFor ? 'bg-secondary text-black' : 'bg-gray-800 text-white'} px-4 py-1 rounded-full font-bold">
-                            #${player.id}
-                        </div>
-                        ${isVotedFor ? '<div class="absolute top-0 right-0 bg-secondary text-black px-3 py-1 rounded-bl-lg rounded-tr-lg"><i class="fas fa-check"></i> Your Vote</div>' : ''}
-                        ${isAdmin ? `
-                            <div class="absolute top-0 left-0">
-                                <button onclick="event.stopPropagation(); removePlayer(${player.id})" class="bg-red-600 text-white p-2 rounded-bl-lg rounded-tr-lg hover:bg-red-700">
-                                    <i class="fas fa-times"></i>
-                                </button>
-                            </div>
-                        ` : ''}
-                    </div>
-                    <h4 class="text-2xl font-bold text-center mb-2">${player.name}</h4>
-                    <div class="text-center mb-4">
-                        <span class="${isVotedFor ? 'text-secondary' : 'text-gray-300'} font-semibold">${player.team}</span>
-                    </div>
-                    <div class="text-center mb-4">
-                        <div class="text-3xl font-bold ${isVotedFor ? 'text-secondary' : 'text-gray-300'}" id="votes${player.id}">${player.votes}</div>
-                        <div class="text-gray-400 text-sm">Votes</div>
-                    </div>
-                    <button class="vote-btn w-full py-3 rounded-lg font-semibold transition-colors ${isVotedFor ? 'bg-green-600 text-white' : canVote ? 'bg-gray-800 hover:bg-secondary text-white hover:text-black' : 'bg-red-600 text-white'}" 
-                            data-player="${player.id}" 
-                            onclick="handleVote(${player.id})"
-                            ${!canVote ? 'disabled' : ''}>
-                        ${isVotedFor ? '<i class="fas fa-check mr-2"></i>Voted!' : !canVote ? '<i class="fas fa-times mr-2"></i>Already Voted' : '<i class="fas fa-vote-yea mr-2"></i>Vote Now'}
-                    </button>
-                `;
-                
-                playersGrid.appendChild(playerCard);
+// Check if device has voted
+app.get('/api/check-vote/:deviceId', async (req, res) => {
+    try {
+        const { deviceId } = req.params;
+        const result = await pool.query(
+            'SELECT player_id FROM votes WHERE device_id = $1',
+            [deviceId]
+        );
+        
+        if (result.rows.length > 0) {
+            res.json({
+                hasVoted: true,
+                playerId: result.rows[0].player_id
             });
-            
-            updatePlayerCount();
+        } else {
+            res.json({ hasVoted: false });
         }
+    } catch (error) {
+        console.error('Error checking vote:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 
-        async function addNewPlayer(e) {
-            e.preventDefault();
-            
-            const name = document.getElementById('playerName').value.trim();
-            const team = document.getElementById('playerTeam').value.trim();
-            const imageBase64 = document.getElementById('playerImageBase64').value;
-            const imageUrl = document.getElementById('playerImageUrl').value.trim();
-            
-            if (!name || !team) {
-                showMessage('Please fill player name and team!', 'error');
-                return;
-            }
-            
-            // Use base64 image if available, otherwise use URL
-            let image = imageUrl;
-            if (imageBase64) {
-                image = imageBase64;
-            }
-            
-            const playerData = {
-                name: name,
-                team: team,
-                image: image
-            };
-            
-            const newPlayer = await addPlayerAPI(playerData);
-            
-            if (newPlayer) {
-                players.push(newPlayer);
-                renderPlayers();
-                updateResults();
-                loadPlayersTable();
-                
-                // Reset form
-                document.getElementById('addPlayerForm').reset();
-                clearImage();
-                
-                showMessage(`Added ${name} successfully!`, 'success');
-            } else {
-                showMessage('Failed to add player!', 'error');
-            }
+// Submit a vote
+app.post('/api/vote', async (req, res) => {
+    try {
+        const { playerId, deviceId } = req.body;
+        
+        // Validate inputs
+        if (!playerId || !deviceId) {
+            return res.status(400).json({ error: 'Missing required fields' });
         }
-
-        function updatePlayerCount() {
-            document.getElementById('playerCount').textContent = players.length;
-        }
-
-        // =============================================
-        // VOTING SYSTEM
-        // =============================================
-        async function handleVote(playerId) {
-            if (userVoted) {
-                showMessage('You have already voted from this device!', 'error');
-                return;
-            }
-
-            const success = await saveVote(playerId);
-            
-            if (success) {
-                userVoted = true;
-                userVotedFor = playerId;
-                
-                updateVoteStatusUI();
-                document.getElementById('resetVoteBtn').classList.remove('hidden');
-                
-                // Reload data to get updated vote counts
-                await loadPlayers();
-                
-                showMessage(`You voted for ${getPlayerName(playerId)}!`, 'success');
-            }
-        }
-
-        async function resetVote() {
-            if (!confirm("Are you sure you want to reset your vote? This action cannot be undone.")) {
-                return;
-            }
-            
-            const success = await resetVoteAPI();
-            
-            if (success) {
-                userVoted = false;
-                userVotedFor = null;
-                
-                updateVoteStatusUI();
-                document.getElementById('resetVoteBtn').classList.add('hidden');
-                
-                // Reload data
-                await loadPlayers();
-                
-                showMessage('Your vote has been reset. You can vote again.', 'success');
-            } else {
-                showMessage('Failed to reset vote!', 'error');
-            }
-        }
-
-        // =============================================
-        // RESULTS SYSTEM
-        // =============================================
-        function updateResults() {
-            const resultsList = document.getElementById('resultsList');
-            resultsList.innerHTML = '';
-            
-            const sortedPlayers = [...players].sort((a, b) => b.votes - a.votes);
-            
-            sortedPlayers.forEach((player, index) => {
-                const percent = totalVotes > 0 ? Math.round((player.votes / totalVotes) * 100) : 0;
-                const isUserVote = userVotedFor == player.id;
-                
-                const resultItem = document.createElement('div');
-                resultItem.className = `flex items-center justify-between p-3 rounded-lg ${isUserVote ? 'bg-yellow-900/20 border border-yellow-700/50' : ''}`;
-                resultItem.innerHTML = `
-                    <div class="flex items-center flex-1">
-                        <div class="text-secondary font-bold text-lg mr-4 w-8">#${index + 1}</div>
-                        <div class="w-10 h-10 rounded-full overflow-hidden mr-3">
-                            <img src="${player.image || 'https://via.placeholder.com/100?text=' + encodeURIComponent(player.name.charAt(0))}" 
-                                 alt="${player.name}" 
-                                 class="w-full h-full object-cover">
-                        </div>
-                        <div class="flex-1">
-                            <div class="font-semibold">${player.name} ${isUserVote ? '<span class="text-secondary text-sm">(Your Vote)</span>' : ''}</div>
-                            <div class="text-sm text-gray-400">${player.team} • ${player.votes} votes</div>
-                        </div>
-                    </div>
-                    <div class="flex items-center w-64">
-                        <div class="w-48 bg-gray-800 rounded-full h-4 mr-4">
-                            <div class="bg-secondary h-4 rounded-full" style="width: ${percent}%"></div>
-                        </div>
-                        <div class="text-secondary font-bold w-12 text-right">${percent}%</div>
-                    </div>
-                `;
-                
-                resultsList.appendChild(resultItem);
+        
+        // Start transaction
+        await pool.query('BEGIN');
+        
+        // Check if already voted (with FOR UPDATE lock to prevent race conditions)
+        const existingVote = await pool.query(
+            'SELECT id FROM votes WHERE device_id = $1 FOR UPDATE',
+            [deviceId]
+        );
+        
+        if (existingVote.rows.length > 0) {
+            await pool.query('ROLLBACK');
+            return res.status(400).json({ 
+                error: 'Already voted from this device',
+                success: false 
             });
         }
-
-        // =============================================
-        // UTILITY FUNCTIONS
-        // =============================================
-        function showMessage(message, type) {
-            const statusDiv = document.getElementById('voteStatus');
-            const messageSpan = document.getElementById('statusMessage');
-            
-            statusDiv.className = 'mt-4 p-4 rounded-lg';
-            
-            if (type === 'success') {
-                statusDiv.classList.add('bg-green-900', 'border', 'border-green-700');
-                messageSpan.innerHTML = `<i class="fas fa-check-circle text-green-400 mr-2"></i>${message}`;
-            } else if (type === 'error') {
-                statusDiv.classList.add('bg-red-900', 'border', 'border-red-700');
-                messageSpan.innerHTML = `<i class="fas fa-exclamation-circle text-red-400 mr-2"></i>${message}`;
-            } else {
-                statusDiv.classList.add('bg-yellow-900', 'border', 'border-yellow-700');
-                messageSpan.innerHTML = `<i class="fas fa-info-circle text-yellow-400 mr-2"></i>${message}`;
-            }
-            
-            statusDiv.classList.remove('hidden');
-            
-            setTimeout(() => {
-                statusDiv.classList.add('hidden');
-            }, 5000);
+        
+        // Check if player exists
+        const playerExists = await pool.query('SELECT id FROM players WHERE id = $1', [playerId]);
+        if (playerExists.rows.length === 0) {
+            await pool.query('ROLLBACK');
+            return res.status(404).json({ error: 'Player not found', success: false });
         }
-
-        // =============================================
-        // EVENT LISTENERS
-        // =============================================
-        document.getElementById('addPlayerForm').addEventListener('submit', addNewPlayer);
-
-        // =============================================
-        // INITIALIZATION
-        // =============================================
-        async function initializeApp() {
-            await initializeDeviceId();
-            await loadPlayers();
-            
-            console.log("App initialized. Device ID:", userDeviceId);
+        
+        // Record the vote
+        await pool.query(
+            'INSERT INTO votes (player_id, device_id) VALUES ($1, $2)',
+            [playerId, deviceId]
+        );
+        
+        // Update player vote count
+        await pool.query(
+            'UPDATE players SET votes = votes + 1 WHERE id = $1',
+            [playerId]
+        );
+        
+        await pool.query('COMMIT');
+        
+        res.json({ 
+            success: true,
+            message: 'Vote recorded successfully'
+        });
+    } catch (error) {
+        await pool.query('ROLLBACK');
+        
+        // Check if it's a unique constraint violation
+        if (error.code === '23505') { // unique_violation
+            console.error('Duplicate vote attempt:', error);
+            return res.status(400).json({ 
+                error: 'Already voted from this device',
+                success: false 
+            });
         }
+        
+        console.error('Error submitting vote:', error);
+        res.status(500).json({ 
+            error: 'Internal server error',
+            success: false 
+        });
+    }
+});
 
-        initializeApp();
-    </script>
-</body>
-</html>
+// Reset user's vote
+app.post('/api/reset-vote', async (req, res) => {
+    try {
+        const { deviceId } = req.body;
+        
+        if (!deviceId) {
+            return res.status(400).json({ error: 'Device ID required' });
+        }
+        
+        // Get the player they voted for
+        const voteResult = await pool.query(
+            'SELECT player_id FROM votes WHERE device_id = $1',
+            [deviceId]
+        );
+        
+        if (voteResult.rows.length === 0) {
+            return res.json({ success: true, message: 'No vote found' });
+        }
+        
+        const playerId = voteResult.rows[0].player_id;
+        
+        // Start transaction
+        await pool.query('BEGIN');
+        
+        // Remove vote record
+        await pool.query(
+            'DELETE FROM votes WHERE device_id = $1',
+            [deviceId]
+        );
+        
+        // Decrement player vote count
+        await pool.query(
+            'UPDATE players SET votes = GREATEST(votes - 1, 0) WHERE id = $1',
+            [playerId]
+        );
+        
+        await pool.query('COMMIT');
+        
+        res.json({ success: true, message: 'Vote reset successfully' });
+    } catch (error) {
+        await pool.query('ROLLBACK');
+        console.error('Error resetting vote:', error);
+        res.status(500).json({ error: 'Internal server error', success: false });
+    }
+});
+
+// Admin login
+app.post('/api/admin/login', async (req, res) => {
+    try {
+        const { password } = req.body;
+        
+        if (password === ADMIN_PASSWORD) {
+            res.json({ success: true });
+        } else {
+            res.status(401).json({ error: 'Invalid password', success: false });
+        }
+    } catch (error) {
+        console.error('Admin login error:', error);
+        res.status(500).json({ error: 'Internal server error', success: false });
+    }
+});
+
+// Reset all votes (admin only)
+app.post('/api/admin/reset-all', async (req, res) => {
+    try {
+        // Start transaction
+        await pool.query('BEGIN');
+        
+        // Reset all player votes
+        await pool.query('UPDATE players SET votes = 0');
+        
+        // Clear all votes
+        await pool.query('DELETE FROM votes');
+        
+        await pool.query('COMMIT');
+        
+        res.json({ success: true, message: 'All votes reset successfully' });
+    } catch (error) {
+        await pool.query('ROLLBACK');
+        console.error('Error resetting all votes:', error);
+        res.status(500).json({ error: 'Internal server error', success: false });
+    }
+});
+
+// Add new player (admin only)
+app.post('/api/admin/add-player', async (req, res) => {
+    try {
+        const { name, team, image } = req.body;
+        
+        if (!name || !team) {
+            return res.status(400).json({ error: 'Name and team are required' });
+        }
+        
+        const result = await pool.query(
+            'INSERT INTO players (name, team, image) VALUES ($1, $2, $3) RETURNING *',
+            [name, team, image || '']
+        );
+        
+        res.json({ player: result.rows[0], success: true });
+    } catch (error) {
+        console.error('Error adding player:', error);
+        res.status(500).json({ error: 'Internal server error', success: false });
+    }
+});
+
+// Remove player (admin only)
+app.delete('/api/admin/remove-player/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        // Start transaction
+        await pool.query('BEGIN');
+        
+        // Remove votes for this player
+        await pool.query('DELETE FROM votes WHERE player_id = $1', [id]);
+        
+        // Remove player
+        await pool.query('DELETE FROM players WHERE id = $1', [id]);
+        
+        await pool.query('COMMIT');
+        
+        res.json({ success: true, message: 'Player removed successfully' });
+    } catch (error) {
+        await pool.query('ROLLBACK');
+        console.error('Error removing player:', error);
+        res.status(500).json({ error: 'Internal server error', success: false });
+    }
+});
+
+// Update player image (admin only)
+app.put('/api/admin/update-image/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { image } = req.body;
+        
+        const result = await pool.query(
+            'UPDATE players SET image = $1 WHERE id = $2 RETURNING *',
+            [image || '', id]
+        );
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Player not found', success: false });
+        }
+        
+        res.json({ player: result.rows[0], success: true });
+    } catch (error) {
+        console.error('Error updating player image:', error);
+        res.status(500).json({ error: 'Internal server error', success: false });
+    }
+});
+
+// Serve frontend for any other route
+app.get('*', (req, res) => {
+    res.sendFile('index.html', { root: __dirname + '/public' });
+});
+
+// Start server
+async function startServer() {
+    await initializeDatabase();
+    
+    app.listen(port, () => {
+        console.log(`Server running on port ${port}`);
+        console.log(`Database connected: ${process.env.DATABASE_URL ? 'Yes' : 'No'}`);
+    });
+}
+
+startServer();
