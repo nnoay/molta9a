@@ -71,6 +71,15 @@
             opacity: 0.5;
             cursor: not-allowed;
         }
+        
+        .player-image-hover {
+            transition: all 0.3s ease;
+        }
+        
+        .player-image-hover:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
+        }
     </style>
 </head>
 <body class="min-h-screen bg-dark text-white">
@@ -186,6 +195,91 @@
                             Cancel
                         </button>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add Player Modal (for all users) -->
+        <div id="addPlayerModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 hidden">
+            <div class="bg-gray-900 border-2 border-secondary rounded-xl p-8 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
+                <h3 class="text-2xl font-bold mb-6 text-center text-secondary">
+                    <i class="fas fa-user-plus mr-2"></i>Add New Player
+                </h3>
+                <form id="publicAddPlayerForm" class="space-y-4">
+                    <div>
+                        <label class="block text-gray-400 mb-2">Player Name</label>
+                        <input type="text" id="publicPlayerName" required 
+                               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-secondary"
+                               placeholder="Enter player name">
+                    </div>
+                    <div>
+                        <label class="block text-gray-400 mb-2">Team</label>
+                        <input type="text" id="publicPlayerTeam" required 
+                               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-secondary"
+                               value="3eme math" placeholder="Enter team name">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-400 mb-2">Player Image</label>
+                        <div class="flex flex-col space-y-3">
+                            <div class="flex space-x-3">
+                                <button type="button" onclick="takePublicPhoto()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg text-sm">
+                                    <i class="fas fa-camera mr-2"></i>Camera
+                                </button>
+                                <button type="button" onclick="uploadPublicPhoto()" class="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-3 rounded-lg text-sm">
+                                    <i class="fas fa-upload mr-2"></i>Upload
+                                </button>
+                            </div>
+                            <input type="file" id="publicImageUpload" accept="image/*" capture="environment" class="hidden">
+                            <input type="hidden" id="publicPlayerImageBase64">
+                            
+                            <div id="publicImagePreviewContainer" class="hidden mt-3">
+                                <div class="border-2 border-dashed border-gray-700 rounded-lg p-4">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <span class="text-gray-400">Image Preview:</span>
+                                        <button type="button" onclick="clearPublicImage()" class="text-red-500 hover:text-red-400">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    </div>
+                                    <img id="publicImagePreview" class="max-w-full h-32 object-cover rounded-lg mx-auto">
+                                </div>
+                            </div>
+                            
+                            <div class="relative">
+                                <div class="absolute inset-0 flex items-center">
+                                    <div class="w-full border-t border-gray-700"></div>
+                                </div>
+                                <div class="relative flex justify-center text-sm">
+                                    <span class="px-2 bg-gray-900 text-gray-400">OR use image URL</span>
+                                </div>
+                            </div>
+                            
+                            <input type="url" id="publicPlayerImageUrl" 
+                                   class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-secondary"
+                                   placeholder="https://example.com/player-image.jpg">
+                        </div>
+                    </div>
+                    
+                    <div class="flex space-x-4">
+                        <button type="submit" class="flex-1 bg-secondary text-black font-bold py-3 rounded-lg hover:bg-yellow-500 transition-colors">
+                            <i class="fas fa-plus mr-2"></i>Add Player
+                        </button>
+                        <button type="button" onclick="closeAddPlayerModal()" class="flex-1 bg-gray-700 text-white font-bold py-3 rounded-lg hover:bg-gray-600 transition-colors">
+                            Cancel
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Update Image Modal -->
+        <div id="updateImageModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 hidden">
+            <div class="bg-gray-900 border-2 border-secondary rounded-xl p-8 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
+                <h3 class="text-2xl font-bold mb-6 text-center text-secondary">
+                    <i class="fas fa-image mr-2"></i>Update Player Image
+                </h3>
+                <div id="updateImageContent" class="space-y-4">
+                    <!-- Content will be loaded dynamically -->
                 </div>
             </div>
         </div>
@@ -360,7 +454,7 @@
         let totalVotes = 0;
         let userDeviceId = null;
         let userVotedFor = null;
-        let isVoting = false; // NEW: Prevent multiple vote attempts
+        let isVoting = false;
 
         // =============================================
         // API FUNCTIONS
@@ -398,6 +492,7 @@
                 renderPlayers();
                 updateResults();
                 if (isAdmin) {
+                    loadPlayersTable();
                     loadUpdateImagesForms();
                 }
             } catch (error) {
@@ -417,7 +512,7 @@
                 
                 return response.success;
             } catch (error) {
-                throw error; // Re-throw to handle in calling function
+                throw error;
             }
         }
 
@@ -557,22 +652,22 @@
         // =============================================
         // VOTE BUTTON CONTROL FUNCTIONS
         // =============================================
-function disableAllVoteButtons() {
-    const voteButtons = document.querySelectorAll('.vote-btn');
-    voteButtons.forEach(button => {
-        button.disabled = true;
-        button.classList.add('disabled-btn');
-        
-        const playerId = button.dataset.player;
-        if (playerId == userVotedFor) {
-            button.innerHTML = '<i class="fas fa-check mr-2"></i>Voted!';
-            button.className = 'vote-btn w-full py-3 rounded-lg font-semibold transition-colors bg-green-600 text-white disabled-btn';
-        } else {
-            button.innerHTML = '<i class="fas fa-times mr-2"></i>Already Voted';
-            button.className = 'vote-btn w-full py-3 rounded-lg font-semibold transition-colors bg-red-600 text-white disabled-btn';
+        function disableAllVoteButtons() {
+            const voteButtons = document.querySelectorAll('.vote-btn');
+            voteButtons.forEach(button => {
+                button.disabled = true;
+                button.classList.add('disabled-btn');
+                
+                const playerId = button.dataset.player;
+                if (playerId == userVotedFor) {
+                    button.innerHTML = '<i class="fas fa-check mr-2"></i>Voted!';
+                    button.className = 'vote-btn w-full py-3 rounded-lg font-semibold transition-colors bg-green-600 text-white disabled-btn';
+                } else {
+                    button.innerHTML = '<i class="fas fa-times mr-2"></i>Already Voted';
+                    button.className = 'vote-btn w-full py-3 rounded-lg font-semibold transition-colors bg-red-600 text-white disabled-btn';
+                }
+            });
         }
-    });
-}
 
         function enableAllVoteButtons() {
             const voteButtons = document.querySelectorAll('.vote-btn');
@@ -582,6 +677,396 @@ function disableAllVoteButtons() {
                 button.innerHTML = '<i class="fas fa-vote-yea mr-2"></i>Vote Now';
                 button.className = 'vote-btn w-full py-3 rounded-lg font-semibold transition-colors bg-gray-800 hover:bg-secondary text-white hover:text-black';
             });
+        }
+
+        // =============================================
+        // PLAYER RENDERING - UPDATED
+        // =============================================
+        function renderPlayers() {
+            const playersGrid = document.getElementById('playersGrid');
+            playersGrid.innerHTML = '';
+            
+            players.forEach(player => {
+                const isVotedFor = userVoted && userVotedFor == player.id;
+                const canVote = !userVoted && !isVoting;
+                
+                const playerCard = document.createElement('div');
+                playerCard.className = `player-card bg-black border-2 rounded-xl p-6 transition-all duration-300 cursor-pointer ${isVotedFor ? 'border-secondary voted-glow' : 'border-gray-800 hover:border-secondary hover:shadow-lg hover:shadow-yellow-500/20'}`;
+                playerCard.setAttribute('data-player-id', player.id);
+                
+                playerCard.innerHTML = `
+                    <div class="relative mb-6">
+                        <div class="w-32 h-32 mx-auto rounded-full overflow-hidden border-4 ${isVotedFor ? 'border-secondary' : 'border-gray-700'} player-image-hover">
+                            <img src="${player.image || 'https://via.placeholder.com/200?text=' + encodeURIComponent(player.name)}" 
+                                 alt="${player.name}" 
+                                 class="w-full h-full object-cover cursor-pointer"
+                                 onclick="event.stopPropagation(); showImageOptions(${player.id})">
+                            <div class="absolute inset-0 bg-black bg-opacity-0 hover:bg-opacity-30 transition-all duration-300 flex items-center justify-center opacity-0 hover:opacity-100 cursor-pointer" onclick="event.stopPropagation(); showImageOptions(${player.id})">
+                                <i class="fas fa-camera text-white text-2xl"></i>
+                            </div>
+                        </div>
+                        
+                        ${isVotedFor ? '<div class="absolute top-0 right-0 bg-secondary text-black px-3 py-1 rounded-bl-lg rounded-tr-lg"><i class="fas fa-check"></i> Your Vote</div>' : ''}
+                        
+                        <!-- Remove button for all users -->
+                        <div class="absolute top-0 left-0">
+                            <button onclick="event.stopPropagation(); removePlayerPrompt(${player.id})" class="bg-red-600 text-white p-2 rounded-bl-lg rounded-tr-lg hover:bg-red-700">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                        
+                        <!-- Update image button for all users -->
+                        <div class="absolute top-0 right-12 ${isVotedFor ? 'right-24' : ''}">
+                            <button onclick="event.stopPropagation(); showImageOptions(${player.id})" class="bg-blue-600 text-white p-2 rounded-bl-lg rounded-tr-lg hover:bg-blue-700">
+                                <i class="fas fa-image"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <h4 class="text-2xl font-bold text-center mb-2">${player.name}</h4>
+                    <div class="text-center mb-4">
+                        <span class="${isVotedFor ? 'text-secondary' : 'text-gray-300'} font-semibold">${player.team}</span>
+                    </div>
+                    <div class="text-center mb-4">
+                        <div class="text-3xl font-bold ${isVotedFor ? 'text-secondary' : 'text-gray-300'}" id="votes${player.id}">${player.votes}</div>
+                        <div class="text-gray-400 text-sm">Votes</div>
+                    </div>
+                    <button class="vote-btn w-full py-3 rounded-lg font-semibold transition-colors ${isVotedFor ? 'bg-green-600 text-white' : canVote ? 'bg-gray-800 hover:bg-secondary text-white hover:text-black' : 'bg-red-600 text-white disabled-btn'}" 
+                            data-player="${player.id}" 
+                            onclick="handleVote(${player.id})"
+                            ${!canVote ? 'disabled' : ''}>
+                        ${isVotedFor ? '<i class="fas fa-check mr-2"></i>Voted!' : !canVote ? '<i class="fas fa-times mr-2"></i>Already Voted' : '<i class="fas fa-vote-yea mr-2"></i>Vote Now'}
+                    </button>
+                `;
+                
+                playersGrid.appendChild(playerCard);
+            });
+            
+            // Add "Add Player" card for all users
+            const addPlayerCard = document.createElement('div');
+            addPlayerCard.className = 'bg-black border-2 border-dashed border-gray-700 rounded-xl p-6 transition-all duration-300 hover:border-secondary hover:shadow-lg hover:shadow-yellow-500/20 cursor-pointer';
+            addPlayerCard.innerHTML = `
+                <div class="flex flex-col items-center justify-center h-full">
+                    <div class="w-32 h-32 mx-auto rounded-full overflow-hidden border-4 border-dashed border-gray-600 mb-6 flex items-center justify-center">
+                        <i class="fas fa-user-plus text-gray-400 text-5xl"></i>
+                    </div>
+                    <h4 class="text-2xl font-bold text-center mb-2 text-gray-300">Add New Player</h4>
+                    <p class="text-gray-400 text-center mb-4">Click to add a new player</p>
+                    <button onclick="showAddPlayerModal()" class="w-full py-3 rounded-lg font-semibold bg-gray-800 hover:bg-secondary text-white hover:text-black transition-colors">
+                        <i class="fas fa-plus mr-2"></i>Add Player
+                    </button>
+                </div>
+            `;
+            
+            playersGrid.appendChild(addPlayerCard);
+            
+            updatePlayerCount();
+        }
+
+        function updatePlayerCount() {
+            document.getElementById('playerCount').textContent = players.length;
+        }
+
+        // =============================================
+        // PLAYER MANAGEMENT FOR ALL USERS
+        // =============================================
+        function showAddPlayerModal() {
+            document.getElementById('addPlayerModal').classList.remove('hidden');
+        }
+
+        function closeAddPlayerModal() {
+            document.getElementById('addPlayerModal').classList.add('hidden');
+            document.getElementById('publicAddPlayerForm').reset();
+            clearPublicImage();
+        }
+
+        async function addNewPlayerPublic(e) {
+            e.preventDefault();
+            
+            const name = document.getElementById('publicPlayerName').value.trim();
+            const team = document.getElementById('publicPlayerTeam').value.trim();
+            const imageBase64 = document.getElementById('publicPlayerImageBase64').value;
+            const imageUrl = document.getElementById('publicPlayerImageUrl').value.trim();
+            
+            if (!name || !team) {
+                showMessage('Please fill player name and team!', 'error');
+                return;
+            }
+            
+            let image = imageUrl;
+            if (imageBase64) {
+                image = imageBase64;
+            }
+            
+            const playerData = {
+                name: name,
+                team: team,
+                image: image
+            };
+            
+            const newPlayer = await addPlayerAPI(playerData);
+            
+            if (newPlayer) {
+                players.push(newPlayer);
+                renderPlayers();
+                updateResults();
+                if (isAdmin) {
+                    loadPlayersTable();
+                    loadUpdateImagesForms();
+                }
+                
+                closeAddPlayerModal();
+                showMessage(`Added ${name} successfully!`, 'success');
+            } else {
+                showMessage('Failed to add player!', 'error');
+            }
+        }
+
+        async function removePlayerPrompt(playerId) {
+            if (!confirm(`Are you sure you want to remove this player?`)) {
+                return;
+            }
+            
+            const success = await removePlayerAPI(playerId);
+            
+            if (success) {
+                players = players.filter(p => p.id !== playerId);
+                renderPlayers();
+                updateResults();
+                if (isAdmin) {
+                    loadPlayersTable();
+                    loadUpdateImagesForms();
+                }
+                showMessage(`Player removed successfully!`, 'success');
+            } else {
+                showMessage('Failed to remove player!', 'error');
+            }
+        }
+
+        function showImageOptions(playerId) {
+            const player = players.find(p => p.id === playerId);
+            if (!player) return;
+            
+            const modal = document.getElementById('updateImageModal');
+            const content = document.getElementById('updateImageContent');
+            
+            content.innerHTML = `
+                <div class="text-center mb-4">
+                    <div class="w-24 h-24 mx-auto rounded-full overflow-hidden border-4 border-secondary mb-3">
+                        <img src="${player.image || 'https://via.placeholder.com/100?text=' + encodeURIComponent(player.name.charAt(0))}" 
+                             alt="${player.name}" 
+                             class="w-full h-full object-cover">
+                    </div>
+                    <h4 class="text-xl font-bold">${player.name}</h4>
+                    <p class="text-gray-400">Update player image</p>
+                </div>
+                
+                <div class="space-y-4">
+                    <div class="flex space-x-3">
+                        <button type="button" onclick="takePhotoForUpdate(${playerId})" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg">
+                            <i class="fas fa-camera mr-2"></i>Camera
+                        </button>
+                        <button type="button" onclick="uploadPhotoForUpdate(${playerId})" class="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-3 rounded-lg">
+                            <i class="fas fa-upload mr-2"></i>Upload
+                        </button>
+                    </div>
+                    
+                    <input type="file" id="updateImageUpload-${playerId}" accept="image/*" class="hidden">
+                    <input type="hidden" id="updateImageBase64-${playerId}">
+                    
+                    <div id="updateImagePreviewContainer-${playerId}" class="hidden">
+                        <div class="border-2 border-dashed border-gray-700 rounded-lg p-4">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-gray-400">Image Preview:</span>
+                                <button type="button" onclick="clearUpdateImage(${playerId})" class="text-red-500 hover:text-red-400">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            <img id="updateImagePreview-${playerId}" class="max-w-full h-32 object-cover rounded-lg mx-auto">
+                        </div>
+                    </div>
+                    
+                    <div class="relative">
+                        <div class="absolute inset-0 flex items-center">
+                            <div class="w-full border-t border-gray-700"></div>
+                        </div>
+                        <div class="relative flex justify-center text-sm">
+                            <span class="px-2 bg-gray-900 text-gray-400">OR use image URL</span>
+                        </div>
+                    </div>
+                    
+                    <input type="url" 
+                           id="updateImageUrl-${playerId}"
+                           class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-secondary"
+                           placeholder="https://example.com/player-image.jpg">
+                    
+                    <div class="flex space-x-4">
+                        <button type="button" onclick="updatePlayerImagePublic(${playerId})" class="flex-1 bg-secondary text-black font-bold py-3 rounded-lg hover:bg-yellow-500 transition-colors">
+                            <i class="fas fa-save mr-2"></i>Update Image
+                        </button>
+                        <button type="button" onclick="closeUpdateImageModal()" class="flex-1 bg-gray-700 text-white font-bold py-3 rounded-lg hover:bg-gray-600 transition-colors">
+                            Cancel
+                        </button>
+                    </div>
+                    
+                    <div class="pt-4 border-t border-gray-800">
+                        <button type="button" onclick="clearPlayerImagePublic(${playerId})" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-lg transition-colors">
+                            <i class="fas fa-trash mr-2"></i>Clear Image
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            // Setup event listener for the file input
+            const fileInput = document.getElementById(`updateImageUpload-${playerId}`);
+            if (fileInput) {
+                fileInput.onchange = (e) => handleUpdateImageUpload(e, playerId);
+            }
+            
+            modal.classList.remove('hidden');
+        }
+
+        function closeUpdateImageModal() {
+            document.getElementById('updateImageModal').classList.add('hidden');
+        }
+
+        function takePhotoForUpdate(playerId) {
+            const input = document.getElementById(`updateImageUpload-${playerId}`);
+            input.setAttribute('capture', 'environment');
+            input.click();
+        }
+
+        function uploadPhotoForUpdate(playerId) {
+            const input = document.getElementById(`updateImageUpload-${playerId}`);
+            input.removeAttribute('capture');
+            input.click();
+        }
+
+        function handleUpdateImageUpload(event, playerId) {
+            const file = event.target.files[0];
+            if (file) {
+                if (file.size > 5 * 1024 * 1024) {
+                    showMessage('Image too large! Max 5MB', 'error');
+                    return;
+                }
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const base64 = e.target.result;
+                    document.getElementById(`updateImageBase64-${playerId}`).value = base64;
+                    
+                    const preview = document.getElementById(`updateImagePreview-${playerId}`);
+                    const previewContainer = document.getElementById(`updateImagePreviewContainer-${playerId}`);
+                    if (preview && previewContainer) {
+                        preview.src = base64;
+                        previewContainer.classList.remove('hidden');
+                    }
+                    
+                    const urlInput = document.getElementById(`updateImageUrl-${playerId}`);
+                    if (urlInput) urlInput.value = '';
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function clearUpdateImage(playerId) {
+            document.getElementById(`updateImageBase64-${playerId}`).value = '';
+            document.getElementById(`updateImageUrl-${playerId}`).value = '';
+            const previewContainer = document.getElementById(`updateImagePreviewContainer-${playerId}`);
+            if (previewContainer) previewContainer.classList.add('hidden');
+        }
+
+        async function updatePlayerImagePublic(playerId) {
+            const imageBase64 = document.getElementById(`updateImageBase64-${playerId}`).value;
+            const imageUrl = document.getElementById(`updateImageUrl-${playerId}`).value.trim();
+            
+            let image = imageUrl;
+            if (imageBase64) {
+                image = imageBase64;
+            }
+            
+            if (!image) {
+                showMessage('Please select an image or enter an image URL', 'error');
+                return;
+            }
+            
+            const success = await updatePlayerImageAPI(playerId, image);
+            
+            if (success) {
+                const playerIndex = players.findIndex(p => p.id === playerId);
+                if (playerIndex !== -1) {
+                    players[playerIndex].image = image;
+                }
+                
+                renderPlayers();
+                updateResults();
+                closeUpdateImageModal();
+                
+                showMessage(`Image updated for ${getPlayerName(playerId)}!`, 'success');
+            } else {
+                showMessage('Failed to update image!', 'error');
+            }
+        }
+
+        async function clearPlayerImagePublic(playerId) {
+            if (!confirm('Clear this player\'s image?')) return;
+            
+            const success = await updatePlayerImageAPI(playerId, '');
+            
+            if (success) {
+                const playerIndex = players.findIndex(p => p.id === playerId);
+                if (playerIndex !== -1) {
+                    players[playerIndex].image = '';
+                }
+                
+                renderPlayers();
+                updateResults();
+                closeUpdateImageModal();
+                
+                showMessage(`Image cleared for ${getPlayerName(playerId)}`, 'success');
+            } else {
+                showMessage('Failed to clear image!', 'error');
+            }
+        }
+
+        // =============================================
+        // IMAGE UPLOAD FOR PUBLIC PLAYER ADD
+        // =============================================
+        function takePublicPhoto() {
+            document.getElementById('publicImageUpload').setAttribute('capture', 'environment');
+            document.getElementById('publicImageUpload').click();
+        }
+
+        function uploadPublicPhoto() {
+            document.getElementById('publicImageUpload').removeAttribute('capture');
+            document.getElementById('publicImageUpload').click();
+        }
+
+        document.getElementById('publicImageUpload').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                if (file.size > 5 * 1024 * 1024) {
+                    showMessage('Image too large! Max 5MB', 'error');
+                    return;
+                }
+                
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const base64 = event.target.result;
+                    document.getElementById('publicPlayerImageBase64').value = base64;
+                    
+                    document.getElementById('publicImagePreview').src = base64;
+                    document.getElementById('publicImagePreviewContainer').classList.remove('hidden');
+                    document.getElementById('publicPlayerImageUrl').value = '';
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        function clearPublicImage() {
+            document.getElementById('publicPlayerImageBase64').value = '';
+            document.getElementById('publicPlayerImageUrl').value = '';
+            document.getElementById('publicImagePreviewContainer').classList.add('hidden');
+            document.getElementById('publicImageUpload').value = '';
         }
 
         // =============================================
@@ -740,7 +1225,7 @@ function disableAllVoteButtons() {
         }
 
         // =============================================
-        // IMAGE UPDATE FUNCTIONS
+        // IMAGE UPDATE FUNCTIONS (ADMIN)
         // =============================================
         function loadUpdateImagesForms() {
             const updateImagesGrid = document.getElementById('updateImagesGrid');
@@ -868,21 +1353,16 @@ function disableAllVoteButtons() {
             const success = await updatePlayerImageAPI(playerId, image);
             
             if (success) {
-                // Update local player data
                 const playerIndex = players.findIndex(p => p.id === playerId);
                 if (playerIndex !== -1) {
                     players[playerIndex].image = image;
                 }
                 
-                // Update UI
                 renderPlayers();
-                if (isAdmin) {
-                    loadUpdateImagesForms();
-                }
+                loadUpdateImagesForms();
                 
                 showMessage(`Image updated for ${getPlayerName(playerId)}!`, 'success');
                 
-                // Clear form
                 document.getElementById(`playerImageBase64-${playerId}`).value = '';
                 document.getElementById(`imageUrl-${playerId}`).value = '';
                 const previewContainer = document.getElementById(`imagePreviewContainer-${playerId}`);
@@ -904,9 +1384,7 @@ function disableAllVoteButtons() {
                 }
                 
                 renderPlayers();
-                if (isAdmin) {
-                    loadUpdateImagesForms();
-                }
+                loadUpdateImagesForms();
                 
                 showMessage(`Image cleared for ${getPlayerName(playerId)}`, 'success');
             } else {
@@ -915,7 +1393,7 @@ function disableAllVoteButtons() {
         }
 
         // =============================================
-        // IMAGE UPLOAD FOR NEW PLAYER
+        // IMAGE UPLOAD FOR NEW PLAYER (ADMIN)
         // =============================================
         function takePhoto() {
             document.getElementById('imageUpload').setAttribute('capture', 'environment');
@@ -953,63 +1431,6 @@ function disableAllVoteButtons() {
             document.getElementById('playerImageUrl').value = '';
             document.getElementById('imagePreviewContainer').classList.add('hidden');
             document.getElementById('imageUpload').value = '';
-        }
-
-        // =============================================
-        // PLAYER RENDERING
-        // =============================================
-        function renderPlayers() {
-            const playersGrid = document.getElementById('playersGrid');
-            playersGrid.innerHTML = '';
-            
-            players.forEach(player => {
-                const isVotedFor = userVoted && userVotedFor == player.id;
-                const canVote = !userVoted && !isVoting;
-                
-                const playerCard = document.createElement('div');
-                playerCard.className = `player-card bg-black border-2 rounded-xl p-6 transition-all duration-300 cursor-pointer ${isVotedFor ? 'border-secondary voted-glow' : 'border-gray-800 hover:border-secondary hover:shadow-lg hover:shadow-yellow-500/20'}`;
-                playerCard.setAttribute('data-player-id', player.id);
-                
-                playerCard.innerHTML = `
-                    <div class="relative mb-6">
-                        <div class="w-32 h-32 mx-auto rounded-full overflow-hidden border-4 ${isVotedFor ? 'border-secondary' : 'border-gray-700'}">
-                            <img src="${player.image || 'https://via.placeholder.com/200?text=' + encodeURIComponent(player.name)}" 
-                                 alt="${player.name}" 
-                                 class="w-full h-full object-cover" 
-                                 loading="lazy">
-                        </div>
-                        <div class="absolute -bottom-2 left-1/2 transform -translate-x-1/2 ${isVotedFor ? 'bg-secondary text-black' : 'bg-gray-800 text-white'} px-4 py-1 rounded-full font-bold">
-                            #${player.id}
-                        </div>
-                        ${isVotedFor ? '<div class="absolute top-0 right-0 bg-secondary text-black px-3 py-1 rounded-bl-lg rounded-tr-lg"><i class="fas fa-check"></i> Your Vote</div>' : ''}
-                        ${isAdmin ? `
-                            <div class="absolute top-0 left-0">
-                                <button onclick="event.stopPropagation(); removePlayer(${player.id})" class="bg-red-600 text-white p-2 rounded-bl-lg rounded-tr-lg hover:bg-red-700">
-                                    <i class="fas fa-times"></i>
-                                </button>
-                            </div>
-                        ` : ''}
-                    </div>
-                    <h4 class="text-2xl font-bold text-center mb-2">${player.name}</h4>
-                    <div class="text-center mb-4">
-                        <span class="${isVotedFor ? 'text-secondary' : 'text-gray-300'} font-semibold">${player.team}</span>
-                    </div>
-                    <div class="text-center mb-4">
-                        <div class="text-3xl font-bold ${isVotedFor ? 'text-secondary' : 'text-gray-300'}" id="votes${player.id}">${player.votes}</div>
-                        <div class="text-gray-400 text-sm">Votes</div>
-                    </div>
-                    <button class="vote-btn w-full py-3 rounded-lg font-semibold transition-colors ${isVotedFor ? 'bg-green-600 text-white' : canVote ? 'bg-gray-800 hover:bg-secondary text-white hover:text-black' : 'bg-red-600 text-white disabled-btn'}" 
-                            data-player="${player.id}" 
-                            onclick="handleVote(${player.id})"
-                            ${!canVote ? 'disabled' : ''}>
-                        ${isVotedFor ? '<i class="fas fa-check mr-2"></i>Voted!' : !canVote ? '<i class="fas fa-times mr-2"></i>Already Voted' : '<i class="fas fa-vote-yea mr-2"></i>Vote Now'}
-                    </button>
-                `;
-                
-                playersGrid.appendChild(playerCard);
-            });
-            
-            updatePlayerCount();
         }
 
         async function addNewPlayer(e) {
@@ -1054,15 +1475,10 @@ function disableAllVoteButtons() {
             }
         }
 
-        function updatePlayerCount() {
-            document.getElementById('playerCount').textContent = players.length;
-        }
-
         // =============================================
-        // VOTING SYSTEM - FIXED TO PREVENT MULTIPLE VOTES
+        // VOTING SYSTEM
         // =============================================
         async function handleVote(playerId) {
-            // Prevent multiple vote attempts
             if (isVoting) {
                 showMessage('Please wait, processing your vote...', 'info');
                 return;
@@ -1073,7 +1489,6 @@ function disableAllVoteButtons() {
                 return;
             }
 
-            // Disable all vote buttons immediately
             isVoting = true;
             disableAllVoteButtons();
             
@@ -1087,22 +1502,18 @@ function disableAllVoteButtons() {
                     updateVoteStatusUI();
                     document.getElementById('resetVoteBtn').classList.remove('hidden');
                     
-                    // Reload data to get updated vote counts
                     await loadPlayers();
                     
                     showMessage(`You voted for ${getPlayerName(playerId)}!`, 'success');
                 } else {
-                    // Re-enable buttons if vote failed
                     enableAllVoteButtons();
                     isVoting = false;
                 }
             } catch (error) {
-                // Re-enable buttons on error
                 enableAllVoteButtons();
                 isVoting = false;
                 
                 if (error.message.includes('Already voted')) {
-                    // Update UI to reflect that user has already voted
                     userVoted = true;
                     await checkDeviceVote();
                 }
@@ -1204,6 +1615,7 @@ function disableAllVoteButtons() {
         // EVENT LISTENERS
         // =============================================
         document.getElementById('addPlayerForm').addEventListener('submit', addNewPlayer);
+        document.getElementById('publicAddPlayerForm').addEventListener('submit', addNewPlayerPublic);
 
         // =============================================
         // INITIALIZATION
