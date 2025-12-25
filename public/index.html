@@ -557,17 +557,22 @@
         // =============================================
         // VOTE BUTTON CONTROL FUNCTIONS
         // =============================================
-        function disableAllVoteButtons() {
-            const voteButtons = document.querySelectorAll('.vote-btn');
-            voteButtons.forEach(button => {
-                button.disabled = true;
-                button.classList.add('disabled-btn');
-                if (button.dataset.player != userVotedFor) {
-                    button.innerHTML = '<i class="fas fa-times mr-2"></i>Already Voted';
-                    button.className = 'vote-btn w-full py-3 rounded-lg font-semibold transition-colors bg-red-600 text-white disabled-btn';
-                }
-            });
+function disableAllVoteButtons() {
+    const voteButtons = document.querySelectorAll('.vote-btn');
+    voteButtons.forEach(button => {
+        button.disabled = true;
+        button.classList.add('disabled-btn');
+        
+        const playerId = button.dataset.player;
+        if (playerId == userVotedFor) {
+            button.innerHTML = '<i class="fas fa-check mr-2"></i>Voted!';
+            button.className = 'vote-btn w-full py-3 rounded-lg font-semibold transition-colors bg-green-600 text-white disabled-btn';
+        } else {
+            button.innerHTML = '<i class="fas fa-times mr-2"></i>Already Voted';
+            button.className = 'vote-btn w-full py-3 rounded-lg font-semibold transition-colors bg-red-600 text-white disabled-btn';
         }
+    });
+}
 
         function enableAllVoteButtons() {
             const voteButtons = document.querySelectorAll('.vote-btn');
