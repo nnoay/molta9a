@@ -9,7 +9,7 @@ const port = process.env.PORT || 3000;
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
-app.use(express.static('public'));
+app.use(express.static(__dirname + '/public'));
 
 // PostgreSQL connection
 const pool = new Pool({
@@ -17,7 +17,7 @@ const pool = new Pool({
     ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
-// Admin password (same as frontend)
+// Admin password
 const ADMIN_PASSWORD = "tchedlouzeboulaaz1919";
 
 // Initialize database
@@ -36,7 +36,7 @@ async function initializeDatabase() {
             )
         `);
 
-        // Create votes table
+        // Create votes table with UNIQUE constraint on device_id
         await pool.query(`
             CREATE TABLE IF NOT EXISTS votes (
                 id SERIAL PRIMARY KEY,
@@ -120,18 +120,34 @@ app.post('/api/vote', async (req, res) => {
     try {
         const { playerId, deviceId } = req.body;
         
-        // Check if already voted
-        const existingVote = await pool.query(
-            'SELECT id FROM votes WHERE device_id = $1',
-            [deviceId]
-        );
-        
-        if (existingVote.rows.length > 0) {
-            return res.status(400).json({ error: 'Already voted from this device' });
+        // Validate inputs
+        if (!playerId || !deviceId) {
+            return res.status(400).json({ error: 'Missing required fields' });
         }
         
         // Start transaction
         await pool.query('BEGIN');
+        
+        // Check if already voted (with FOR UPDATE lock to prevent race conditions)
+        const existingVote = await pool.query(
+            'SELECT id FROM votes WHERE device_id = $1 FOR UPDATE',
+            [deviceId]
+        );
+        
+        if (existingVote.rows.length > 0) {
+            await pool.query('ROLLBACK');
+            return res.status(400).json({ 
+                error: 'Already voted from this device',
+                success: false 
+            });
+        }
+        
+        // Check if player exists
+        const playerExists = await pool.query('SELECT id FROM players WHERE id = $1', [playerId]);
+        if (playerExists.rows.length === 0) {
+            await pool.query('ROLLBACK');
+            return res.status(404).json({ error: 'Player not found', success: false });
+        }
         
         // Record the vote
         await pool.query(
@@ -147,11 +163,27 @@ app.post('/api/vote', async (req, res) => {
         
         await pool.query('COMMIT');
         
-        res.json({ success: true });
+        res.json({ 
+            success: true,
+            message: 'Vote recorded successfully'
+        });
     } catch (error) {
         await pool.query('ROLLBACK');
+        
+        // Check if it's a unique constraint violation
+        if (error.code === '23505') { // unique_violation
+            console.error('Duplicate vote attempt:', error);
+            return res.status(400).json({ 
+                error: 'Already voted from this device',
+                success: false 
+            });
+        }
+        
         console.error('Error submitting vote:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ 
+            error: 'Internal server error',
+            success: false 
+        });
     }
 });
 
@@ -160,6 +192,10 @@ app.post('/api/reset-vote', async (req, res) => {
     try {
         const { deviceId } = req.body;
         
+        if (!deviceId) {
+            return res.status(400).json({ error: 'Device ID required' });
+        }
+        
         // Get the player they voted for
         const voteResult = await pool.query(
             'SELECT player_id FROM votes WHERE device_id = $1',
@@ -167,7 +203,7 @@ app.post('/api/reset-vote', async (req, res) => {
         );
         
         if (voteResult.rows.length === 0) {
-            return res.json({ success: true });
+            return res.json({ success: true, message: 'No vote found' });
         }
         
         const playerId = voteResult.rows[0].player_id;
@@ -189,11 +225,11 @@ app.post('/api/reset-vote', async (req, res) => {
         
         await pool.query('COMMIT');
         
-        res.json({ success: true });
+        res.json({ success: true, message: 'Vote reset successfully' });
     } catch (error) {
         await pool.query('ROLLBACK');
         console.error('Error resetting vote:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ error: 'Internal server error', success: false });
     }
 });
 
@@ -205,11 +241,11 @@ app.post('/api/admin/login', async (req, res) => {
         if (password === ADMIN_PASSWORD) {
             res.json({ success: true });
         } else {
-            res.status(401).json({ error: 'Invalid password' });
+            res.status(401).json({ error: 'Invalid password', success: false });
         }
     } catch (error) {
         console.error('Admin login error:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ error: 'Internal server error', success: false });
     }
 });
 
@@ -227,11 +263,11 @@ app.post('/api/admin/reset-all', async (req, res) => {
         
         await pool.query('COMMIT');
         
-        res.json({ success: true });
+        res.json({ success: true, message: 'All votes reset successfully' });
     } catch (error) {
         await pool.query('ROLLBACK');
         console.error('Error resetting all votes:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ error: 'Internal server error', success: false });
     }
 });
 
@@ -240,15 +276,19 @@ app.post('/api/admin/add-player', async (req, res) => {
     try {
         const { name, team, image } = req.body;
         
+        if (!name || !team) {
+            return res.status(400).json({ error: 'Name and team are required' });
+        }
+        
         const result = await pool.query(
             'INSERT INTO players (name, team, image) VALUES ($1, $2, $3) RETURNING *',
-            [name, team, image]
+            [name, team, image || '']
         );
         
-        res.json({ player: result.rows[0] });
+        res.json({ player: result.rows[0], success: true });
     } catch (error) {
         console.error('Error adding player:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ error: 'Internal server error', success: false });
     }
 });
 
@@ -268,17 +308,39 @@ app.delete('/api/admin/remove-player/:id', async (req, res) => {
         
         await pool.query('COMMIT');
         
-        res.json({ success: true });
+        res.json({ success: true, message: 'Player removed successfully' });
     } catch (error) {
         await pool.query('ROLLBACK');
         console.error('Error removing player:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ error: 'Internal server error', success: false });
+    }
+});
+
+// Update player image (admin only)
+app.put('/api/admin/update-image/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { image } = req.body;
+        
+        const result = await pool.query(
+            'UPDATE players SET image = $1 WHERE id = $2 RETURNING *',
+            [image || '', id]
+        );
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Player not found', success: false });
+        }
+        
+        res.json({ player: result.rows[0], success: true });
+    } catch (error) {
+        console.error('Error updating player image:', error);
+        res.status(500).json({ error: 'Internal server error', success: false });
     }
 });
 
 // Serve frontend for any other route
 app.get('*', (req, res) => {
-    res.sendFile('index.html', { root: 'public' });
+    res.sendFile('index.html', { root: __dirname + '/public' });
 });
 
 // Start server
@@ -287,6 +349,7 @@ async function startServer() {
     
     app.listen(port, () => {
         console.log(`Server running on port ${port}`);
+        console.log(`Database connected: ${process.env.DATABASE_URL ? 'Yes' : 'No'}`);
     });
 }
 
